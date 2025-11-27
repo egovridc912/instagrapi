@@ -74,6 +74,15 @@ def extract_media_v1(data):
     media["sponsor_tags"] = [tag["sponsor"] for tag in media.get("sponsor_tags") or []]
     media["play_count"] = media.get("play_count", 0)
     media["coauthor_producers"] = media.get("coauthor_producers", [])
+    
+    # Fix clips_metadata to ensure required fields are present
+    clips_metadata = media.get("clips_metadata")
+    if clips_metadata:
+        if "mashup_info" not in clips_metadata:
+            clips_metadata["mashup_info"] = None
+        # Add other commonly missing fields with defaults if needed
+        if isinstance(clips_metadata, dict):
+            media["clips_metadata"] = clips_metadata
     return Media(
         caption_text=(media.get("caption") or {}).get("text", ""),
         resources=[
@@ -135,6 +144,11 @@ def extract_media_gql(data):
     media_id = media.get("id")
     media["pk"] = media_id
     media["id"] = f"{media_id}_{user.pk}"
+    
+    # Fix clips_metadata to ensure required fields are present
+    clips_metadata = media.get("clips_metadata")
+    if clips_metadata and "mashup_info" not in clips_metadata:
+        clips_metadata["mashup_info"] = None
     return Media(
         code=media.get("shortcode"),
         taken_at=media.get("taken_at_timestamp"),
@@ -199,13 +213,22 @@ def extract_user_short(data):
 
 def extract_broadcast_channel(data):
     """ Extract broadcast channel infos """
-    channels = data["pinned_channels_info"]["pinned_channels_list"]
+    pinned_info = data.get("pinned_channels_info", {})
+    channels = pinned_info.get("pinned_channels_list", [])
     return [Broadcast(**channel) for channel in channels]
 
 
-def extract_user_gql(data):
+def extract_user_gql(data, **kwargs):
     """For Public GraphQL API"""
     data["broadcast_channel"] = extract_broadcast_channel(data)
+    
+    # Fix bio_links to ensure link_id is present
+    bio_links = data.get("bio_links", [])
+    for i, link in enumerate(bio_links):
+        if "link_id" not in link:
+            link["link_id"] = str(i)  # Use index as fallback link_id
+    data["bio_links"] = bio_links
+    
     return User(
         pk=data["id"],
         media_count=data["edge_owner_to_timeline_media"]["count"],
